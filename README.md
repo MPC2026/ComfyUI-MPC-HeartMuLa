@@ -9,6 +9,7 @@ ComfyUI custom nodes for HeartMuLa music generation with a workflow surface buil
 ## What this package does
 
 - Uses the official `heartlib` pipeline API at runtime. This repo does not try to replace HeartMuLa's runtime with a separate custom inference stack.
+- Ships a pinned local copy of `heartlib` inside this repository, so runtime startup does not need to fetch `heartlib` from the network.
 - Prefers local HeartMuLa model folders in `ComfyUI/models/HeartMuLa`, matching the manual setup style used by other HeartMuLa ComfyUI integrations.
 - Keeps the on-disk layout in official HeartMuLa names such as `HeartMuLa-oss-3B`, `HeartCodec-oss`, `HeartMuLa-RL-oss-3B-20260123`, `gen_config.json`, and `tokenizer.json`.
 - Auto-detects the best compatible generation pair it finds:
@@ -31,15 +32,40 @@ It follows official HeartMuLa naming for the checkpoint folders on disk.
 That means:
 
 - runtime API: `heartlib`
+- `heartlib` source: vendored locally in `_vendor/heartlib-main/src/heartlib`
+- pinned upstream revision: `3783bdb8441f2c298b1e64c8651173aac200361c`
 - model root: `ComfyUI/models/HeartMuLa`
 - folder names: official HeartMuLa folder names inside that root
 - Apple Silicon default: MPS for the HeartMuLa model, CPU for HeartCodec, then CPU-only fallback
 
+## Self-contained runtime
+
+This repo now includes a vendored copy of `heartlib` under `_vendor/heartlib-main/src/heartlib`.
+
+That vendored copy is pinned to upstream `HeartMuLa/heartlib` commit `3783bdb8441f2c298b1e64c8651173aac200361c`.
+
+The runtime no longer downloads `heartlib` on first use. If the vendored copy is missing, startup fails with an explicit local-repo error instead of silently fetching code from the internet.
+
+## Truly offline install
+
+Extension Manager is not the offline path because it still needs network access to fetch the repository.
+
+For a no-network install on the target machine, use the local bundle workflow included in this repo:
+
+1. On a connected machine, populate `_offline/wheels/` with Python wheels by running `./scripts/build_offline_bundle.sh --python /path/to/comfyui/python`.
+2. If you already have a working local HeartMuLa model root, add `--model-root /path/to/ComfyUI/models/HeartMuLa` so the same command copies it into `_offline/models/HeartMuLa/`.
+3. Move the whole repo folder to the offline machine by USB, AirDrop, LAN copy, or any other local transfer.
+4. Put the repo in `ComfyUI/custom_nodes/ComfyUI-MPC-HeartMuLa` on the offline machine.
+5. Run `./scripts/install_offline.sh --python /path/to/comfyui/python --comfyui-root /path/to/ComfyUI`.
+6. Keep `auto_download_models` off. The offline installer writes `_offline/STRICT_OFFLINE`, and runtime will reject network fallback paths on purpose.
+
+The offline bundle layout is documented in `_offline/README.md`.
+
 ## Quick Start
 
-1. Install from the ComfyUI Extension Manager or clone into `custom_nodes`.
-2. Install Python requirements using the same Python that launches ComfyUI.
-3. Download the HeartMuLa model folders into `ComfyUI/models/HeartMuLa` with the `hf` CLI commands below.
+1. Install from the ComfyUI Extension Manager, clone into `custom_nodes`, or move in a prepared offline bundle.
+2. Install Python requirements with the same Python that launches ComfyUI, or run `./scripts/install_offline.sh` if you prepared `_offline/wheels/`.
+3. Put the HeartMuLa model folders in `ComfyUI/models/HeartMuLa`, or let `./scripts/install_offline.sh` copy a prepared `_offline/models/HeartMuLa/` bundle.
 4. Import `workflows/heartmula_simple_song_workflow.json`.
 5. Edit the lyrics, tags, BPM, song key, and duration inside `HeartMuLa Song Spec`.
 6. Run the workflow.
@@ -93,6 +119,16 @@ pip install -r requirements.txt
 
 If your ComfyUI launcher uses a bundled Python, use that Python for the install command instead of system `pip`.
 
+### Offline custom node install
+
+1. On a connected machine, run `./scripts/build_offline_bundle.sh --python /path/to/comfyui/python --model-root /path/to/ComfyUI/models/HeartMuLa`.
+2. Move this whole repo folder to the offline machine.
+3. Put it in `ComfyUI/custom_nodes/ComfyUI-MPC-HeartMuLa`.
+4. Run `./scripts/install_offline.sh --python /path/to/comfyui/python --comfyui-root /path/to/ComfyUI`.
+5. Restart ComfyUI and keep `auto_download_models` disabled.
+
+If your ComfyUI Python does not already include `torch`, rebuild the offline bundle with `--include-torch`. The bundle script will also try to capture the matching `torchaudio` wheel from that same Python environment.
+
 ### Import the included workflow
 
 1. Start ComfyUI after installing the node.
@@ -144,6 +180,8 @@ Compatibility note:
 - If you already have `HeartMuLa-oss-3B-happy-new-year`, this node pack will also use it automatically when `HeartCodec-oss-20260123` is present.
 
 The included workflow defaults to manual model usage. Turn on `auto_download_models` only if you want the node to fetch the base public pair for you.
+
+For strict offline installs, leave `auto_download_models` off. The offline installer creates `_offline/STRICT_OFFLINE`, and runtime will fail fast instead of attempting network downloads.
 
 ## Nodes
 

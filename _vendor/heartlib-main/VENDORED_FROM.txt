@@ -1,0 +1,10 @@
+Repository: https://github.com/HeartMuLa/heartlib
+Commit: 3783bdb8441f2c298b1e64c8651173aac200361c
+License: Apache-2.0
+
+Vendored contents:
+- LICENSE
+- src/heartlib/
+
+Purpose:
+- Provide a pinned local heartlib runtime for fully self-contained ComfyUI-MPC-HeartMuLa installs.

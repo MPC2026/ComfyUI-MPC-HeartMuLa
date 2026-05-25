@@ -6,6 +6,9 @@ This node pack follows the official ``heartlib`` pipeline API at runtime while
 keeping the official HeartMuLa checkpoint folder names on disk under
 ``ComfyUI/models/HeartMuLa``.
 
+The ``heartlib`` package itself is vendored into this repository so local runs
+do not depend on network fetches at startup.
+
 For Apple Silicon, ``auto`` mode prefers the split-device path supported by
 ``heartlib``: HeartMuLa on MPS, HeartCodec on CPU, then CPU-only fallback.
 """
@@ -17,13 +20,9 @@ import importlib.util
 import os
 import re
 import shlex
-import shutil
-import ssl
 import sys
 import tempfile
-import urllib.request
 import uuid
-import zipfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,8 +30,9 @@ from typing import Any
 import folder_paths
 import torch
 
-HEARTLIB_ARCHIVE_URL = "https://codeload.github.com/HeartMuLa/heartlib/zip/refs/heads/main"
 HEARTLIB_ARCHIVE_ROOT = "heartlib-main"
+VENDORED_HEARTLIB_REPO = "https://github.com/HeartMuLa/heartlib"
+VENDORED_HEARTLIB_COMMIT = "3783bdb8441f2c298b1e64c8651173aac200361c"
 GEN_CONFIG_REPO = "HeartMuLa/HeartMuLaGen"
 AUTO_DOWNLOAD_MUSIC_MODEL_REPO = "HeartMuLa/HeartMuLa-oss-3B"
 AUTO_DOWNLOAD_CODEC_MODEL_REPO = "HeartMuLa/HeartCodec-oss"
@@ -43,6 +43,11 @@ AUTO_DOWNLOAD_CODEC_VARIANT = "HeartCodec-oss"
 TRANSCRIPTOR_VARIANT = "HeartTranscriptor-oss"
 VENDOR_ROOT = Path(__file__).resolve().parent / "_vendor"
 HEARTLIB_SOURCE_ROOT = VENDOR_ROOT / HEARTLIB_ARCHIVE_ROOT / "src"
+OFFLINE_BUNDLE_ROOT = Path(__file__).resolve().parent / "_offline"
+OFFLINE_WHEELHOUSE_ROOT = OFFLINE_BUNDLE_ROOT / "wheels"
+OFFLINE_MODEL_BUNDLE_ROOT = OFFLINE_BUNDLE_ROOT / "models" / MODEL_NAMESPACE
+STRICT_OFFLINE_MARKER = OFFLINE_BUNDLE_ROOT / "STRICT_OFFLINE"
+STRICT_OFFLINE_ENV_VAR = "COMFYUI_HEARTMULA_OFFLINE"
 SUPPORTED_GENERATION_LAYOUTS = (
     ("HeartMuLa-RL-oss-3B-20260123", "HeartCodec-oss-20260123"),
     ("HeartMuLa-oss-3B-happy-new-year", "HeartCodec-oss-20260123"),
@@ -298,6 +303,12 @@ def get_model_root() -> Path:
 
 
 def ensure_model_assets(model_root: Path) -> None:
+    if _offline_mode_enabled():
+        raise RuntimeError(
+            "auto_download_models is unavailable in strict offline mode. "
+            f"{_offline_model_install_hint(model_root)} Leave auto_download_models disabled."
+        )
+
     snapshot_download = importlib.import_module("huggingface_hub").snapshot_download
 
     if not (model_root / "gen_config.json").is_file() or not (model_root / "tokenizer.json").is_file():
@@ -325,6 +336,12 @@ def ensure_model_assets(model_root: Path) -> None:
 
 
 def ensure_transcriptor_assets(model_root: Path) -> None:
+    if _offline_mode_enabled():
+        raise RuntimeError(
+            "auto_download_models is unavailable in strict offline mode. "
+            f"{_offline_model_install_hint(model_root)} Leave auto_download_models disabled."
+        )
+
     snapshot_download = importlib.import_module("huggingface_hub").snapshot_download
     transcriptor_dir = model_root / "HeartTranscriptor-oss"
     if not (transcriptor_dir / "config.json").is_file():
@@ -339,6 +356,12 @@ def _assert_required_models(model_root: Path) -> None:
 def _assert_transcriptor_assets(model_root: Path) -> None:
     transcriptor_config = model_root / "HeartTranscriptor-oss" / "config.json"
     if not transcriptor_config.is_file():
+        if _offline_mode_enabled():
+            raise FileNotFoundError(
+                "Missing HeartMuLa transcriptor assets. "
+                f"Expected {transcriptor_config}. {_offline_model_install_hint(model_root)}"
+            )
+
         transcriptor_dir = shlex.quote(str(model_root / TRANSCRIPTOR_VARIANT))
         raise FileNotFoundError(
             "Missing HeartMuLa transcriptor assets. "
@@ -354,6 +377,7 @@ def _ensure_runtime_dependencies() -> None:
         "tokenizers": "tokenizers",
         "transformers": "transformers",
         "torchaudio": "torchaudio",
+        "torchao": "torchao",
         "torchtune": "torchtune",
         "numpy": "numpy",
         "einops": "einops",
@@ -366,8 +390,24 @@ def _ensure_runtime_dependencies() -> None:
         packages = ", ".join(sorted(missing))
         raise RuntimeError(
             "Missing Python dependencies for ComfyUI-MPC-HeartMuLa: "
-            f"{packages}. Install them from this node folder with `pip install -r requirements.txt`."
+            f"{packages}. Install them from this node folder with `pip install -r requirements.txt`, "
+            "make sure the same Python also has the matching torch/torchaudio stack used by ComfyUI, "
+            f"or stage local wheels in {OFFLINE_WHEELHOUSE_ROOT} and run `./scripts/install_offline.sh`."
         )
+
+
+def _offline_mode_enabled() -> bool:
+    raw_value = os.environ.get(STRICT_OFFLINE_ENV_VAR, "").strip().lower()
+    return raw_value in {"1", "true", "yes", "on"} or STRICT_OFFLINE_MARKER.is_file()
+
+
+def _offline_model_install_hint(model_root: Path) -> str:
+    bundle_root = shlex.quote(str(OFFLINE_MODEL_BUNDLE_ROOT))
+    target_root = shlex.quote(str(model_root))
+    return (
+        f"Copy a prepared local HeartMuLa bundle from {bundle_root} into {target_root} "
+        "with `./scripts/install_offline.sh --comfyui-root /path/to/ComfyUI`."
+    )
 
 
 def _import_heartlib():
@@ -383,31 +423,12 @@ def _ensure_heartlib_source() -> None:
     if importlib.util.find_spec("heartlib") is not None:
         return
 
-    VENDOR_ROOT.mkdir(parents=True, exist_ok=True)
-    archive_path = VENDOR_ROOT / "heartlib-main.zip"
-    extracted_root = VENDOR_ROOT / HEARTLIB_ARCHIVE_ROOT
-    temp_extract_dir = Path(tempfile.mkdtemp(prefix="heartlib_extract_", dir=VENDOR_ROOT))
-    try:
-        _download_file(HEARTLIB_ARCHIVE_URL, archive_path)
-        with zipfile.ZipFile(archive_path) as archive:
-            archive.extractall(temp_extract_dir)
-        if extracted_root.exists():
-            shutil.rmtree(extracted_root)
-        shutil.move(str(temp_extract_dir / HEARTLIB_ARCHIVE_ROOT), str(extracted_root))
-    finally:
-        if archive_path.exists():
-            archive_path.unlink()
-        shutil.rmtree(temp_extract_dir, ignore_errors=True)
-
-    _prepend_to_syspath(HEARTLIB_SOURCE_ROOT)
-
-
-def _download_file(url: str, destination: Path) -> None:
-    certifi = importlib.import_module("certifi")
-    context = ssl.create_default_context(cafile=certifi.where())
-    with urllib.request.urlopen(url, context=context, timeout=120) as response:
-        with open(destination, "wb") as handle:
-            shutil.copyfileobj(response, handle)
+    raise RuntimeError(
+        "Vendored heartlib source is missing from this repository. "
+        f"Expected {HEARTLIB_SOURCE_ROOT}. "
+        "This repo is intended to run fully offline with a pinned local heartlib copy at "
+        f"{VENDORED_HEARTLIB_REPO} commit {VENDORED_HEARTLIB_COMMIT}."
+    )
 
 
 def _prepend_to_syspath(path: Path) -> None:
@@ -737,14 +758,21 @@ def _build_generation_assets_error(model_root: Path, issues: list[str]) -> str:
         ]
     )
     issue_text = "\n".join(f"- {issue}" for issue in issues)
+    if _offline_mode_enabled():
+        setup_text = (
+            "Offline setup:\n"
+            f"- {_offline_model_install_hint(model_root)}\n"
+            f"- The local bundle path inside this repo is {OFFLINE_MODEL_BUNDLE_ROOT}"
+        )
+    else:
+        setup_text = f"Manual setup commands:\n{command_block}"
     return (
         f"HeartMuLa generation assets are not ready in {model_root}.\n"
         "This node pack uses the official heartlib runtime API with official "
         "HeartMuLa folder names under a shared model root.\n"
         f"{issue_text}\n\n"
         f"Supported model and codec pairs:\n{supported_pairs}\n\n"
-        "Manual setup commands:\n"
-        f"{command_block}\n\n"
+        f"{setup_text}\n\n"
         "If you use HeartMuLa-RL-oss-3B-20260123, you must pair it with "
         "HeartCodec-oss-20260123."
     )
