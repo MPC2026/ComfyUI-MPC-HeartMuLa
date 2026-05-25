@@ -8,27 +8,30 @@ ComfyUI custom nodes for HeartMuLa music generation with a workflow surface buil
 
 ## What this package does
 
-- Uses the best currently released open HeartMuLa stack for music quality and lyric controllability:
-  - `HeartMuLa-oss-3B-happy-new-year`
-  - `HeartCodec-oss-20260123`
+- Prefers local HeartMuLa model folders in `ComfyUI/models/HeartMuLa`, matching the manual setup style used by other HeartMuLa ComfyUI integrations.
+- Auto-detects the best compatible generation pair it finds:
+  - `HeartMuLa-RL-oss-3B-20260123` + `HeartCodec-oss-20260123`
+  - `HeartMuLa-oss-3B-happy-new-year` + `HeartCodec-oss-20260123`
+  - `HeartMuLa-oss-3B` + `HeartCodec-oss`
 - Targets Apple Silicon well by default.
   - `auto` tries MPS for both model and codec first.
   - If that fails, it falls back to MPS for HeartMuLa and CPU for HeartCodec.
 - Saves lossless `.wav` output in the ComfyUI output folder.
-- Auto-downloads the required model assets into `ComfyUI/models/HeartMuLa` on first use.
+- Leaves `auto_download_models` available as a fallback, but defaults it off so the node pack uses your manually downloaded HeartMuLa folders first.
 
 ## Quick Start
 
 1. Install from the ComfyUI Extension Manager or clone into `custom_nodes`.
 2. Install Python requirements using the same Python that launches ComfyUI.
-3. Import `workflows/heartmula_simple_song_workflow.json`.
-4. Edit the lyrics, tags, BPM, song key, and duration inside `HeartMuLa Song Spec`.
-5. Run the workflow.
-6. Review the generated `.wav` and the lyric compliance report.
+3. Download the HeartMuLa model folders into `ComfyUI/models/HeartMuLa` with the `hf` CLI commands below.
+4. Import `workflows/heartmula_simple_song_workflow.json`.
+5. Edit the lyrics, tags, BPM, song key, and duration inside `HeartMuLa Song Spec`.
+6. Run the workflow.
+7. Review the generated `.wav` and the lyric compliance report.
 
 ## Important note on model size
 
-HeartMuLa mentions an internal 7B model, but the open-source 7B checkpoint is not released yet. The largest public option today is the 3B line, and the recommended quality preset is `HeartMuLa-oss-3B-happy-new-year`.
+HeartMuLa mentions an internal 7B model, but the open-source 7B checkpoint is not released yet. The largest public option today is the 3B line. This node pack supports the released 3B folders listed above and prefers the RL 20260123 pair when it is present locally.
 
 ## Installation
 
@@ -79,27 +82,50 @@ If your ComfyUI launcher uses a bundled Python, use that Python for the install 
 1. Start ComfyUI after installing the node.
 2. Drag `workflows/heartmula_simple_song_workflow.json` onto the canvas.
 3. Or use the workflow load/import menu and select that file.
-4. Run the workflow once to let the models download.
+4. Use the updated workflow file if you imported an older version before. The current JSON avoids custom spec links so labels import cleanly on more ComfyUI frontends.
 
 ### First run
 
-1. Import the included workflow or add the three spec-based nodes manually.
-2. Leave `runtime_profile` on `auto` for Apple Silicon.
-3. Run the workflow once.
-4. Wait for the model download to finish on the first run.
-5. Find the generated `.wav` in your ComfyUI output folder.
-6. Read the lyric compliance score and report on the final node.
+1. Follow the manual model setup below.
+2. Import the included workflow or add the three standard nodes manually.
+3. Leave `auto_download_models` off unless you explicitly want the fallback downloader.
+4. Leave `runtime_profile` on `auto` for Apple Silicon.
+5. Run the workflow once.
+6. Find the generated `.wav` in your ComfyUI output folder.
+7. Read the lyric compliance score and report on the final node.
 
-## First-run downloads
+## Manual HeartMuLa model setup
 
-The first generation run downloads these public assets automatically:
+Go to your `ComfyUI/models` folder first, then download the HeartMuLa assets with the Hugging Face CLI.
 
-- `HeartMuLa/HeartMuLaGen`
-- `HeartMuLa/HeartMuLa-oss-3B-happy-new-year`
-- `HeartMuLa/HeartCodec-oss-20260123`
-- `HeartMuLa/HeartTranscriptor-oss` when you use lyric compliance checking
+```bash
+cd /path/to/ComfyUI/models
 
-They are stored under `ComfyUI/models/HeartMuLa` using the directory names expected by the official `heartlib` pipeline.
+# 1. HeartMuLaGen
+hf download HeartMuLa/HeartMuLaGen --local-dir ./HeartMuLa
+
+# 2. HeartMuLa base model
+hf download HeartMuLa/HeartMuLa-oss-3B --local-dir ./HeartMuLa/HeartMuLa-oss-3B
+
+# or RL 20260123 model
+hf download HeartMuLa/HeartMuLa-RL-oss-3B-20260123 --local-dir ./HeartMuLa/HeartMuLa-RL-oss-3B-20260123
+
+# 3. HeartCodec
+hf download HeartMuLa/HeartCodec-oss --local-dir ./HeartMuLa/HeartCodec-oss
+
+# or the 20260123 codec for the newer RL / 20260123 model family
+hf download HeartMuLa/HeartCodec-oss-20260123 --local-dir ./HeartMuLa/HeartCodec-oss-20260123
+
+# 4. HeartTranscriptor
+hf download HeartMuLa/HeartTranscriptor-oss --local-dir ./HeartMuLa/HeartTranscriptor-oss
+```
+
+Compatibility note:
+
+- If you download `HeartMuLa-RL-oss-3B-20260123`, you must use `HeartCodec-oss-20260123`.
+- If you already have `HeartMuLa-oss-3B-happy-new-year`, this node pack will also use it automatically when `HeartCodec-oss-20260123` is present.
+
+The included workflow defaults to manual model usage. Turn on `auto_download_models` only if you want the node to fetch the base public pair for you.
 
 ## Nodes
 
@@ -120,11 +146,11 @@ Outputs:
 - effective tags
 - `max_audio_length_ms`
 - metadata JSON
-- `song_spec` for simple linked workflows
+- `song_spec` as an optional convenience output
 
 ### `HeartMuLa Generate From Spec`
 
-Uses the `song_spec` output from `HeartMuLa Song Spec` so you can keep the workflow to a single connected generation path.
+Uses the `song_spec` output from `HeartMuLa Song Spec` if you want a custom-type convenience path instead of standard primitive links.
 
 Returns:
 
@@ -140,6 +166,8 @@ Runs HeartMuLa generation and returns:
 - saved file path
 - metadata JSON
 
+The included workflow uses this node with standard `STRING` and `INT` links from `HeartMuLa Song Spec`.
+
 ### `HeartMuLa Lyrics Compliance`
 
 Transcribes generated audio with HeartTranscriptor and compares it against your intended lyrics.
@@ -151,15 +179,17 @@ Returns:
 - exact match boolean
 - report JSON
 
+The included workflow links `expected_lyrics` from `HeartMuLa Song Spec` so the compliance check follows the exact same lyric text used for generation.
+
 ### `HeartMuLa Lyrics Compliance From Spec`
 
-Consumes `song_spec` directly so the compliance check automatically compares against the same lyrics used to generate the song.
+Consumes `song_spec` directly as an optional convenience path.
 
 ## Recommended simple workflow
 
-`HeartMuLa Song Spec` -> `HeartMuLa Generate From Spec` -> `HeartMuLa Lyrics Compliance From Spec`
+`HeartMuLa Song Spec` -> `HeartMuLa Generate Music` -> `HeartMuLa Lyrics Compliance`
 
-Use the included workflow JSON if you want the fastest start. The older `Generate Music` and `Lyrics Compliance` nodes are still there for more manual setups.
+Use the included workflow JSON if you want the fastest start. It uses only standard `STRING`, `INT`, and `AUDIO` links so the widget labels import cleanly.
 
 Included example workflow:
 

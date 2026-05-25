@@ -127,7 +127,7 @@ class HeartMuLaGenerateFromSpec:
                     {"default": 1.8, "min": 1.0, "max": 6.0, "step": 0.1},
                 ),
                 "keep_model_loaded": ("BOOLEAN", {"default": True}),
-                "auto_download_models": ("BOOLEAN", {"default": True}),
+                "auto_download_models": ("BOOLEAN", {"default": False}),
                 "filename_prefix": ("STRING", {"default": "heartmula_song"}),
             }
         }
@@ -183,6 +183,7 @@ class HeartMuLaGenerateMusic:
                     {
                         "default": "[Verse]\nWrite your lyrics here",
                         "multiline": True,
+                        "defaultInput": True,
                     },
                 ),
                 "tags": (
@@ -190,11 +191,18 @@ class HeartMuLaGenerateMusic:
                     {
                         "default": "anthemic,pop,clear vocals,120bpm,c major",
                         "multiline": True,
+                        "defaultInput": True,
                     },
                 ),
                 "max_audio_length_ms": (
                     "INT",
-                    {"default": 60000, "min": 10000, "max": 600000, "step": 1000},
+                    {
+                        "default": 60000,
+                        "min": 10000,
+                        "max": 600000,
+                        "step": 1000,
+                        "defaultInput": True,
+                    },
                 ),
                 "runtime_profile": (
                     [
@@ -220,7 +228,7 @@ class HeartMuLaGenerateMusic:
                     {"default": 1.8, "min": 1.0, "max": 6.0, "step": 0.1},
                 ),
                 "keep_model_loaded": ("BOOLEAN", {"default": True}),
-                "auto_download_models": ("BOOLEAN", {"default": True}),
+                "auto_download_models": ("BOOLEAN", {"default": False}),
                 "filename_prefix": ("STRING", {"default": "heartmula_song"}),
             }
         }
@@ -275,6 +283,7 @@ class HeartMuLaLyricsCompliance:
                     {
                         "default": "[Verse]\nWrite the lyrics you expect here",
                         "multiline": True,
+                        "defaultInput": True,
                     },
                 ),
                 "runtime_profile": (
@@ -287,7 +296,7 @@ class HeartMuLaLyricsCompliance:
                     ],
                     {"default": "auto"},
                 ),
-                "auto_download_models": ("BOOLEAN", {"default": True}),
+                "auto_download_models": ("BOOLEAN", {"default": False}),
                 "keep_model_loaded": ("BOOLEAN", {"default": True}),
                 "temperature_tuple": ("STRING", {"default": "0.0,0.1,0.2,0.4"}),
                 "no_speech_threshold": (
@@ -357,7 +366,7 @@ class HeartMuLaLyricsComplianceFromSpec:
                     ],
                     {"default": "auto"},
                 ),
-                "auto_download_models": ("BOOLEAN", {"default": True}),
+                "auto_download_models": ("BOOLEAN", {"default": False}),
                 "keep_model_loaded": ("BOOLEAN", {"default": True}),
                 "temperature_tuple": ("STRING", {"default": "0.0,0.1,0.2,0.4"}),
                 "no_speech_threshold": (

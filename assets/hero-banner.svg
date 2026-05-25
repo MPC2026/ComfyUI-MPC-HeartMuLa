@@ -30,8 +30,8 @@
   <text x="308" y="304" fill="#334E68" font-family="Helvetica, Arial, sans-serif" font-size="26">HeartMuLa music generation for ComfyUI with lyrics-first prompting, BPM and key tags,</text>
   <text x="308" y="340" fill="#334E68" font-family="Helvetica, Arial, sans-serif" font-size="26">Apple Silicon defaults, and built-in lyric compliance checking.</text>
 
-  <rect x="308" y="384" width="230" height="78" rx="20" fill="#145DA0"/>
-  <text x="346" y="432" fill="#F8FAFC" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700">Spec -&gt; Generate</text>
+  <rect x="308" y="384" width="258" height="78" rx="20" fill="#145DA0"/>
+  <text x="332" y="432" fill="#F8FAFC" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700">Song Spec -&gt; Music</text>
 
   <rect x="566" y="384" width="230" height="78" rx="20" fill="#2E8BC0"/>
   <text x="590" y="432" fill="#F8FAFC" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700">Lyric Compliance</text>
@@ -43,5 +43,5 @@
   <text x="1128" y="432" fill="#1F2933" font-family="Helvetica, Arial, sans-serif" font-size="28" font-weight="700">3B Best Public</text>
 
   <text x="308" y="572" fill="#D9E2EC" font-family="Helvetica, Arial, sans-serif" font-size="24">Repo: github.com/MPC2026/ComfyUI-MPC-HeartMuLa</text>
-  <text x="308" y="612" fill="#D9E2EC" font-family="Helvetica, Arial, sans-serif" font-size="22">Models: HeartMuLa-oss-3B-happy-new-year + HeartCodec-oss-20260123 + HeartTranscriptor-oss</text>
+  <text x="308" y="612" fill="#D9E2EC" font-family="Helvetica, Arial, sans-serif" font-size="22">Models: manual HeartMuLa folders with matching codec pair under ComfyUI/models/HeartMuLa</text>
 </svg>

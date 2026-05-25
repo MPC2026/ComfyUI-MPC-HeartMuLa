@@ -6,6 +6,7 @@ import importlib
 import importlib.util
 import os
 import re
+import shlex
 import shutil
 import ssl
 import sys
@@ -23,18 +24,22 @@ import torch
 HEARTLIB_ARCHIVE_URL = "https://codeload.github.com/HeartMuLa/heartlib/zip/refs/heads/main"
 HEARTLIB_ARCHIVE_ROOT = "heartlib-main"
 GEN_CONFIG_REPO = "HeartMuLa/HeartMuLaGen"
-MUSIC_MODEL_REPO = "HeartMuLa/HeartMuLa-oss-3B-happy-new-year"
-CODEC_MODEL_REPO = "HeartMuLa/HeartCodec-oss-20260123"
+AUTO_DOWNLOAD_MUSIC_MODEL_REPO = "HeartMuLa/HeartMuLa-oss-3B"
+AUTO_DOWNLOAD_CODEC_MODEL_REPO = "HeartMuLa/HeartCodec-oss"
 TRANSCRIPTOR_MODEL_REPO = "HeartMuLa/HeartTranscriptor-oss"
 MODEL_NAMESPACE = "HeartMuLa"
-MODEL_VERSION = "3B"
-MODEL_VARIANT = "HeartMuLa-oss-3B-happy-new-year"
-CODEC_VARIANT = "HeartCodec-oss-20260123"
+AUTO_DOWNLOAD_MODEL_VARIANT = "HeartMuLa-oss-3B"
+AUTO_DOWNLOAD_CODEC_VARIANT = "HeartCodec-oss"
 TRANSCRIPTOR_VARIANT = "HeartTranscriptor-oss"
 VENDOR_ROOT = Path(__file__).resolve().parent / "_vendor"
 HEARTLIB_SOURCE_ROOT = VENDOR_ROOT / HEARTLIB_ARCHIVE_ROOT / "src"
+SUPPORTED_GENERATION_LAYOUTS = (
+    ("HeartMuLa-RL-oss-3B-20260123", "HeartCodec-oss-20260123"),
+    ("HeartMuLa-oss-3B-happy-new-year", "HeartCodec-oss-20260123"),
+    ("HeartMuLa-oss-3B", "HeartCodec-oss"),
+)
 
-_PIPELINE_CACHE: dict[tuple[str, str], Any] = {}
+_PIPELINE_CACHE: dict[tuple[str, str, str], Any] = {}
 _TRANSCRIPTOR_CACHE: dict[tuple[str, str], Any] = {}
 
 
@@ -55,6 +60,17 @@ class TranscriptionProfile:
     label: str
     device: torch.device
     dtype: torch.dtype
+
+
+@dataclass(frozen=True)
+class GenerationAssets:
+    model_root: Path
+    model_variant: str
+    codec_variant: str
+    model_path: Path
+    codec_path: Path
+    tokenizer_path: Path
+    gen_config_path: Path
 
 
 def build_condition_tags(
@@ -127,8 +143,7 @@ def generate_music(
     model_root = get_model_root()
     if auto_download_models:
         ensure_model_assets(model_root)
-    else:
-        _assert_required_models(model_root)
+    generation_assets = _resolve_generation_assets(model_root)
 
     output_dir = Path(folder_paths.get_output_directory())
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -137,7 +152,7 @@ def generate_music(
     errors: list[str] = []
     for profile in _resolve_runtime_candidates(runtime_profile):
         try:
-            pipe = _get_pipeline(heartlib, model_root, profile, keep_model_loaded)
+            pipe = _get_pipeline(heartlib, generation_assets, profile, keep_model_loaded)
             with torch.inference_mode():
                 pipe(
                     {"lyrics": lyrics, "tags": tags},
@@ -151,8 +166,8 @@ def generate_music(
             audio_output = _normalize_audio_output(waveform, sample_rate)
             metadata = {
                 "model_root": str(model_root),
-                "model_variant": MODEL_VARIANT,
-                "codec_variant": CODEC_VARIANT,
+                "model_variant": generation_assets.model_variant,
+                "codec_variant": generation_assets.codec_variant,
                 "requested_runtime_profile": runtime_profile,
                 "effective_runtime_profile": profile.label,
                 "seed": seed,
@@ -165,11 +180,11 @@ def generate_music(
                 "output_path": str(output_path),
             }
             if not keep_model_loaded:
-                _release_pipeline(profile, model_root)
+                _release_pipeline(profile, generation_assets)
             return audio_output, str(output_path), metadata
         except Exception as exc:
             errors.append(f"{profile.label}: {exc}")
-            _release_pipeline(profile, model_root)
+            _release_pipeline(profile, generation_assets)
             if output_path.exists():
                 output_path.unlink()
 
@@ -262,7 +277,7 @@ def get_model_root() -> Path:
             seen.add(resolved)
 
     for candidate in unique_candidates:
-        if (candidate / "gen_config.json").exists() or (candidate / "HeartMuLa-oss-3B").exists():
+        if _looks_like_model_root(candidate):
             candidate.mkdir(parents=True, exist_ok=True)
             return candidate
 
@@ -280,15 +295,21 @@ def ensure_model_assets(model_root: Path) -> None:
             allow_patterns=["gen_config.json", "tokenizer.json"],
         )
 
-    music_dir = model_root / "HeartMuLa-oss-3B"
+    try:
+        _resolve_generation_assets(model_root)
+        return
+    except FileNotFoundError:
+        pass
+
+    music_dir = model_root / AUTO_DOWNLOAD_MODEL_VARIANT
     if not (music_dir / "config.json").is_file():
-        snapshot_download(repo_id=MUSIC_MODEL_REPO, local_dir=str(music_dir))
+        snapshot_download(repo_id=AUTO_DOWNLOAD_MUSIC_MODEL_REPO, local_dir=str(music_dir))
 
-    codec_dir = model_root / "HeartCodec-oss"
+    codec_dir = model_root / AUTO_DOWNLOAD_CODEC_VARIANT
     if not (codec_dir / "config.json").is_file():
-        snapshot_download(repo_id=CODEC_MODEL_REPO, local_dir=str(codec_dir))
+        snapshot_download(repo_id=AUTO_DOWNLOAD_CODEC_MODEL_REPO, local_dir=str(codec_dir))
 
-    _assert_required_models(model_root)
+    _resolve_generation_assets(model_root)
 
 
 def ensure_transcriptor_assets(model_root: Path) -> None:
@@ -300,24 +321,18 @@ def ensure_transcriptor_assets(model_root: Path) -> None:
 
 
 def _assert_required_models(model_root: Path) -> None:
-    missing: list[str] = []
-    if not (model_root / "gen_config.json").is_file():
-        missing.append(str(model_root / "gen_config.json"))
-    if not (model_root / "tokenizer.json").is_file():
-        missing.append(str(model_root / "tokenizer.json"))
-    if not (model_root / "HeartMuLa-oss-3B" / "config.json").is_file():
-        missing.append(str(model_root / "HeartMuLa-oss-3B" / "config.json"))
-    if not (model_root / "HeartCodec-oss" / "config.json").is_file():
-        missing.append(str(model_root / "HeartCodec-oss" / "config.json"))
-    if missing:
-        joined = ", ".join(missing)
-        raise FileNotFoundError(f"Missing HeartMuLa model assets: {joined}")
+    _resolve_generation_assets(model_root)
 
 
 def _assert_transcriptor_assets(model_root: Path) -> None:
     transcriptor_config = model_root / "HeartTranscriptor-oss" / "config.json"
     if not transcriptor_config.is_file():
-        raise FileNotFoundError(f"Missing HeartMuLa transcriptor assets: {transcriptor_config}")
+        transcriptor_dir = shlex.quote(str(model_root / TRANSCRIPTOR_VARIANT))
+        raise FileNotFoundError(
+            "Missing HeartMuLa transcriptor assets. "
+            f"Expected {transcriptor_config}. Download them with: "
+            f"hf download {TRANSCRIPTOR_MODEL_REPO} --local-dir {transcriptor_dir}"
+        )
 
 
 def _ensure_runtime_dependencies() -> None:
@@ -500,17 +515,34 @@ def _resolve_transcription_candidates(requested: str) -> list[TranscriptionProfi
     return [profiles["cpu"]]
 
 
-def _get_pipeline(heartlib: Any, model_root: Path, profile: RuntimeProfile, keep_model_loaded: bool):
-    cache_key = (profile.key, str(model_root))
+def _get_pipeline(
+    heartlib: Any,
+    generation_assets: GenerationAssets,
+    profile: RuntimeProfile,
+    keep_model_loaded: bool,
+):
+    cache_key = (profile.key, str(generation_assets.model_path), str(generation_assets.codec_path))
     if keep_model_loaded and cache_key in _PIPELINE_CACHE:
         return _PIPELINE_CACHE[cache_key]
 
-    pipe = heartlib.HeartMuLaGenPipeline.from_pretrained(
-        str(model_root),
-        device={"mula": profile.mula_device, "codec": profile.codec_device},
-        dtype={"mula": profile.mula_dtype, "codec": profile.codec_dtype},
-        version=MODEL_VERSION,
-        lazy_load=profile.lazy_load,
+    tokenizer = importlib.import_module("tokenizers").Tokenizer.from_file(
+        str(generation_assets.tokenizer_path)
+    )
+    music_generation = importlib.import_module("heartlib.pipelines.music_generation")
+    gen_config = music_generation.HeartMuLaGenConfig.from_file(str(generation_assets.gen_config_path))
+    lazy_load = profile.lazy_load and profile.mula_device == profile.codec_device
+
+    pipe = heartlib.HeartMuLaGenPipeline(
+        heartmula_path=str(generation_assets.model_path),
+        heartcodec_path=str(generation_assets.codec_path),
+        heartmula_device=profile.mula_device,
+        heartcodec_device=profile.codec_device,
+        heartmula_dtype=profile.mula_dtype,
+        heartcodec_dtype=profile.codec_dtype,
+        lazy_load=lazy_load,
+        muq_mulan=None,
+        text_tokenizer=tokenizer,
+        config=gen_config,
     )
     if keep_model_loaded:
         _PIPELINE_CACHE[cache_key] = pipe
@@ -532,8 +564,8 @@ def _get_transcriptor(heartlib: Any, model_root: Path, profile: TranscriptionPro
     return pipe
 
 
-def _release_pipeline(profile: RuntimeProfile, model_root: Path) -> None:
-    cache_key = (profile.key, str(model_root))
+def _release_pipeline(profile: RuntimeProfile, generation_assets: GenerationAssets) -> None:
+    cache_key = (profile.key, str(generation_assets.model_path), str(generation_assets.codec_path))
     pipe = _PIPELINE_CACHE.pop(cache_key, None)
     if pipe is not None:
         del pipe
@@ -610,3 +642,88 @@ def _normalize_text_for_compare(text: str) -> str:
     normalized = re.sub(r"[^a-z0-9\s]", " ", normalized)
     normalized = re.sub(r"\s+", " ", normalized)
     return normalized.strip()
+
+
+def _looks_like_model_root(candidate: Path) -> bool:
+    if (candidate / "gen_config.json").exists() or (candidate / TRANSCRIPTOR_VARIANT).exists():
+        return True
+    return any((candidate / model_variant).exists() for model_variant, _ in SUPPORTED_GENERATION_LAYOUTS)
+
+
+def _resolve_generation_assets(model_root: Path) -> GenerationAssets:
+    tokenizer_path = model_root / "tokenizer.json"
+    gen_config_path = model_root / "gen_config.json"
+    issues: list[str] = []
+
+    if not gen_config_path.is_file():
+        issues.append(f"Missing {gen_config_path}")
+    if not tokenizer_path.is_file():
+        issues.append(f"Missing {tokenizer_path}")
+
+    for model_variant, codec_variant in SUPPORTED_GENERATION_LAYOUTS:
+        model_path = model_root / model_variant
+        codec_path = model_root / codec_variant
+        model_config = model_path / "config.json"
+        codec_config = codec_path / "config.json"
+        if model_config.is_file() and codec_config.is_file() and not issues:
+            return GenerationAssets(
+                model_root=model_root,
+                model_variant=model_variant,
+                codec_variant=codec_variant,
+                model_path=model_path,
+                codec_path=codec_path,
+                tokenizer_path=tokenizer_path,
+                gen_config_path=gen_config_path,
+            )
+
+    issues.extend(_summarize_generation_layout_issues(model_root))
+    raise FileNotFoundError(_build_generation_assets_error(model_root, issues))
+
+
+def _summarize_generation_layout_issues(model_root: Path) -> list[str]:
+    issues: list[str] = []
+    for model_variant, codec_variant in SUPPORTED_GENERATION_LAYOUTS:
+        model_config = model_root / model_variant / "config.json"
+        codec_config = model_root / codec_variant / "config.json"
+        if model_config.is_file() and not codec_config.is_file():
+            issues.append(
+                f"Found {model_variant} but missing the matching codec {codec_variant}"
+            )
+        if codec_config.is_file() and not model_config.is_file():
+            issues.append(
+                f"Found {codec_variant} but missing the matching model {model_variant}"
+            )
+    if not issues:
+        issues.append("No compatible HeartMuLa generation model pair was found")
+    return issues
+
+
+def _build_generation_assets_error(model_root: Path, issues: list[str]) -> str:
+    root_dir = shlex.quote(str(model_root))
+    base_model_dir = shlex.quote(str(model_root / "HeartMuLa-oss-3B"))
+    rl_model_dir = shlex.quote(str(model_root / "HeartMuLa-RL-oss-3B-20260123"))
+    base_codec_dir = shlex.quote(str(model_root / "HeartCodec-oss"))
+    codec_20260123_dir = shlex.quote(str(model_root / "HeartCodec-oss-20260123"))
+    supported_pairs = "\n".join(
+        f"- {model_variant} + {codec_variant}"
+        for model_variant, codec_variant in SUPPORTED_GENERATION_LAYOUTS
+    )
+    command_block = "\n".join(
+        [
+            f"hf download {GEN_CONFIG_REPO} --local-dir {root_dir}",
+            f"hf download HeartMuLa/HeartMuLa-oss-3B --local-dir {base_model_dir}",
+            f"hf download HeartMuLa/HeartMuLa-RL-oss-3B-20260123 --local-dir {rl_model_dir}",
+            f"hf download HeartMuLa/HeartCodec-oss --local-dir {base_codec_dir}",
+            f"hf download HeartMuLa/HeartCodec-oss-20260123 --local-dir {codec_20260123_dir}",
+        ]
+    )
+    issue_text = "\n".join(f"- {issue}" for issue in issues)
+    return (
+        f"HeartMuLa generation assets are not ready in {model_root}.\n"
+        f"{issue_text}\n\n"
+        f"Supported model and codec pairs:\n{supported_pairs}\n\n"
+        "Manual setup commands:\n"
+        f"{command_block}\n\n"
+        "If you use HeartMuLa-RL-oss-3B-20260123, you must pair it with "
+        "HeartCodec-oss-20260123."
+    )
