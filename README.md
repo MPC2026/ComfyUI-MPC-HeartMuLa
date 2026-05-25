@@ -8,16 +8,32 @@ ComfyUI custom nodes for HeartMuLa music generation with a workflow surface buil
 
 ## What this package does
 
+- Uses the official `heartlib` pipeline API at runtime. This repo does not try to replace HeartMuLa's runtime with a separate custom inference stack.
 - Prefers local HeartMuLa model folders in `ComfyUI/models/HeartMuLa`, matching the manual setup style used by other HeartMuLa ComfyUI integrations.
+- Keeps the on-disk layout in official HeartMuLa names such as `HeartMuLa-oss-3B`, `HeartCodec-oss`, `HeartMuLa-RL-oss-3B-20260123`, `gen_config.json`, and `tokenizer.json`.
 - Auto-detects the best compatible generation pair it finds:
   - `HeartMuLa-RL-oss-3B-20260123` + `HeartCodec-oss-20260123`
   - `HeartMuLa-oss-3B-happy-new-year` + `HeartCodec-oss-20260123`
   - `HeartMuLa-oss-3B` + `HeartCodec-oss`
 - Targets Apple Silicon well by default.
-  - `auto` tries MPS for both model and codec first.
-  - If that fails, it falls back to MPS for HeartMuLa and CPU for HeartCodec.
+  - `auto` uses the recommended `heartlib` split-device path: HeartMuLa on MPS, HeartCodec on CPU.
+  - If that fails, it falls back to CPU-only.
+  - `apple_silicon_fast` is still available as a manual all-MPS override, but it is no longer the default path.
 - Saves lossless `.wav` output in the ComfyUI output folder.
 - Leaves `auto_download_models` available as a fallback, but defaults it off so the node pack uses your manually downloaded HeartMuLa folders first.
+
+## Format choice
+
+This repo follows `heartlib` for runtime behavior and pipeline semantics.
+
+It follows official HeartMuLa naming for the checkpoint folders on disk.
+
+That means:
+
+- runtime API: `heartlib`
+- model root: `ComfyUI/models/HeartMuLa`
+- folder names: official HeartMuLa folder names inside that root
+- Apple Silicon default: MPS for the HeartMuLa model, CPU for HeartCodec, then CPU-only fallback
 
 ## Quick Start
 
@@ -97,6 +113,8 @@ If your ComfyUI launcher uses a bundled Python, use that Python for the install 
 ## Manual HeartMuLa model setup
 
 Go to your `ComfyUI/models` folder first, then download the HeartMuLa assets with the Hugging Face CLI.
+
+These commands intentionally keep the official HeartMuLa folder names because the node pack resolves them through the `heartlib` runtime from a shared `ComfyUI/models/HeartMuLa` root.
 
 ```bash
 cd /path/to/ComfyUI/models
@@ -200,9 +218,13 @@ Included example workflow:
 For a 2026 MacBook Pro M5 Max with 128 GB RAM, the defaults are tuned toward quality first without forcing a fragile setup:
 
 - `runtime_profile = auto`
+- `auto` means HeartMuLa on `mps` and HeartCodec on `cpu`
+- CPU-only is the fallback path if MPS is unavailable or fails
 - `keep_model_loaded = true`
 - `cfg_scale = 1.8`
 - `.wav` output
+
+If you want to experiment with an all-MPS path anyway, `apple_silicon_fast` is still exposed as a manual override rather than the default.
 
 ## Lyric adherence and prompt behavior
 

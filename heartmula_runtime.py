@@ -1,5 +1,15 @@
 from __future__ import annotations
 
+"""HeartMuLa runtime glue for ComfyUI.
+
+This node pack follows the official ``heartlib`` pipeline API at runtime while
+keeping the official HeartMuLa checkpoint folder names on disk under
+``ComfyUI/models/HeartMuLa``.
+
+For Apple Silicon, ``auto`` mode prefers the split-device path supported by
+``heartlib``: HeartMuLa on MPS, HeartCodec on CPU, then CPU-only fallback.
+"""
+
 import difflib
 import gc
 import importlib
@@ -168,6 +178,8 @@ def generate_music(
                 "model_root": str(model_root),
                 "model_variant": generation_assets.model_variant,
                 "codec_variant": generation_assets.codec_variant,
+                "runtime_api": "heartlib",
+                "model_layout": "official_HeartMuLa_folders",
                 "requested_runtime_profile": runtime_profile,
                 "effective_runtime_profile": profile.label,
                 "seed": seed,
@@ -430,7 +442,7 @@ def _resolve_runtime_candidates(requested: str) -> list[RuntimeProfile]:
     profiles = {
         "apple_silicon_fast": RuntimeProfile(
             key="apple_silicon_fast",
-            label="Apple Silicon fast (MPS/MPS)",
+            label="Apple Silicon all-MPS experimental (MPS/MPS)",
             mula_device=torch.device("mps"),
             codec_device=torch.device("mps"),
             mula_dtype=torch.float16,
@@ -438,7 +450,7 @@ def _resolve_runtime_candidates(requested: str) -> list[RuntimeProfile]:
         ),
         "apple_silicon_safe": RuntimeProfile(
             key="apple_silicon_safe",
-            label="Apple Silicon safe (MPS/CPU)",
+            label="Apple Silicon recommended (MPS/CPU)",
             mula_device=torch.device("mps"),
             codec_device=torch.device("cpu"),
             mula_dtype=torch.float16,
@@ -464,7 +476,10 @@ def _resolve_runtime_candidates(requested: str) -> list[RuntimeProfile]:
 
     if requested == "auto":
         if has_mps:
-            return [profiles["apple_silicon_fast"], profiles["apple_silicon_safe"], profiles["cpu"]]
+            # Prefer the split-device heartlib path on Apple Silicon: MPS for
+            # HeartMuLa generation, CPU for HeartCodec stability/quality, then
+            # fall back to CPU-only if MPS is unavailable or fails.
+            return [profiles["apple_silicon_safe"], profiles["cpu"]]
         if has_cuda:
             return [profiles["cuda"], profiles["cpu"]]
         return [profiles["cpu"]]
@@ -532,6 +547,9 @@ def _get_pipeline(
     gen_config = music_generation.HeartMuLaGenConfig.from_file(str(generation_assets.gen_config_path))
     lazy_load = profile.lazy_load and profile.mula_device == profile.codec_device
 
+    # Instantiate the official heartlib pipeline directly so we can keep
+    # heartlib's runtime/device semantics while resolving released HeartMuLa
+    # folder variants under a single ComfyUI model root.
     pipe = heartlib.HeartMuLaGenPipeline(
         heartmula_path=str(generation_assets.model_path),
         heartcodec_path=str(generation_assets.codec_path),
@@ -632,6 +650,7 @@ def _build_lyrics_report(expected_lyrics: str, transcribed_text: str, profile: T
         "matched_word_count": matched_words,
         "expected_word_count": len(expected_words),
         "effective_runtime_profile": profile.label,
+        "runtime_api": "heartlib",
         "model_variant": TRANSCRIPTOR_VARIANT,
     }
 
@@ -720,6 +739,8 @@ def _build_generation_assets_error(model_root: Path, issues: list[str]) -> str:
     issue_text = "\n".join(f"- {issue}" for issue in issues)
     return (
         f"HeartMuLa generation assets are not ready in {model_root}.\n"
+        "This node pack uses the official heartlib runtime API with official "
+        "HeartMuLa folder names under a shared model root.\n"
         f"{issue_text}\n\n"
         f"Supported model and codec pairs:\n{supported_pairs}\n\n"
         "Manual setup commands:\n"
