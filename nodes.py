@@ -12,6 +12,40 @@ from .heartmula_runtime import compare_generated_lyrics
 from .heartmula_runtime import generate_music
 
 
+SONG_KEY_OPTIONS = [
+    "C major",
+    "G major",
+    "D major",
+    "A major",
+    "E major",
+    "B major",
+    "F# major",
+    "C# major",
+    "F major",
+    "Bb major",
+    "Eb major",
+    "Ab major",
+    "Db major",
+    "Gb major",
+    "Cb major",
+    "A minor",
+    "E minor",
+    "B minor",
+    "F# minor",
+    "C# minor",
+    "G# minor",
+    "D# minor",
+    "A# minor",
+    "D minor",
+    "G minor",
+    "C minor",
+    "F minor",
+    "Bb minor",
+    "Eb minor",
+    "Ab minor",
+]
+
+
 class HeartMuLaSongSpec:
     @classmethod
     def INPUT_TYPES(cls):
@@ -32,7 +66,7 @@ class HeartMuLaSongSpec:
                     },
                 ),
                 "bpm": ("INT", {"default": 120, "min": 40, "max": 240, "step": 1}),
-                "song_key": ("STRING", {"default": "C major"}),
+                "song_key": (SONG_KEY_OPTIONS, {"default": "C major"}),
                 "duration_seconds": (
                     "INT",
                     {"default": 60, "min": 10, "max": 600, "step": 5},

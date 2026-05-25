@@ -114,10 +114,12 @@ Example:
 cd /path/to/ComfyUI/custom_nodes
 git clone https://github.com/MPC2026/ComfyUI-MPC-HeartMuLa.git
 cd ComfyUI-MPC-HeartMuLa
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 If your ComfyUI launcher uses a bundled Python, use that Python for the install command instead of system `pip`.
+
+If you already have other AI packages in the same environment, always prefer `python -m pip` from the exact ComfyUI interpreter. That avoids downgrading unrelated packages from a different Python environment.
 
 ### Offline custom node install
 
