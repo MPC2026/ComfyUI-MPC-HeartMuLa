@@ -1,0 +1,10 @@
+[project]
+name = "comfyui-mpc-heartmula"
+version = "0.1.0"
+description = "ComfyUI custom nodes for HeartMuLa music generation"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+
+[tool.setuptools]
+py-modules = ["nodes", "heartmula_runtime"]
