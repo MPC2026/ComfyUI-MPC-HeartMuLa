@@ -1,0 +1,24 @@
+<svg width="1600" height="720" viewBox="0 0 1600 720" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1600" height="720" rx="28" fill="#F8FAFC"/>
+  <rect x="74" y="70" width="1452" height="580" rx="26" fill="#E2E8F0"/>
+  <text x="114" y="132" fill="#102A43" font-family="Helvetica, Arial, sans-serif" font-size="38" font-weight="700">Extension Manager Quick Install</text>
+  <text x="114" y="176" fill="#486581" font-family="Helvetica, Arial, sans-serif" font-size="24">Use the GitHub repo directly from ComfyUI's Extension Manager, then install Python requirements once.</text>
+
+  <rect x="114" y="236" width="404" height="304" rx="24" fill="#0F172A"/>
+  <text x="146" y="294" fill="#F8FAFC" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700">1. Open Extension Manager</text>
+  <text x="146" y="346" fill="#CBD5E1" font-family="Helvetica, Arial, sans-serif" font-size="22">Search by repo URL or install from</text>
+  <text x="146" y="382" fill="#FBBF24" font-family="Helvetica, Arial, sans-serif" font-size="20">github.com/MPC2026/ComfyUI-MPC-HeartMuLa</text>
+
+  <rect x="598" y="236" width="404" height="304" rx="24" fill="#14532D"/>
+  <text x="630" y="294" fill="#F0FDF4" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700">2. Install Requirements</text>
+  <text x="630" y="346" fill="#DCFCE7" font-family="Helvetica, Arial, sans-serif" font-size="22">Use the same Python environment that</text>
+  <text x="630" y="382" fill="#DCFCE7" font-family="Helvetica, Arial, sans-serif" font-size="22">launches ComfyUI, then run:</text>
+  <rect x="630" y="416" width="322" height="52" rx="14" fill="#052E16"/>
+  <text x="662" y="450" fill="#BBF7D0" font-family="Courier New, monospace" font-size="20">pip install -r requirements.txt</text>
+
+  <rect x="1082" y="236" width="364" height="304" rx="24" fill="#1D4ED8"/>
+  <text x="1114" y="294" fill="#EFF6FF" font-family="Helvetica, Arial, sans-serif" font-size="30" font-weight="700">3. Import Workflow</text>
+  <text x="1114" y="346" fill="#DBEAFE" font-family="Helvetica, Arial, sans-serif" font-size="22">Drag the included JSON onto the</text>
+  <text x="1114" y="382" fill="#DBEAFE" font-family="Helvetica, Arial, sans-serif" font-size="22">canvas or load it from the menu.</text>
+  <text x="1114" y="430" fill="#BFDBFE" font-family="Helvetica, Arial, sans-serif" font-size="20">workflows/heartmula_simple_song_workflow.json</text>
+</svg>

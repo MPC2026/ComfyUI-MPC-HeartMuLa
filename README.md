@@ -1,6 +1,10 @@
 # ComfyUI-MPC-HeartMuLa
 
-ComfyUI custom nodes for HeartMuLa music generation with a workflow surface built around the controls you asked for: tags, BPM, song key, duration, lyrics, and optional outro or tag ending.
+![ComfyUI-MPC-HeartMuLa hero](assets/hero-banner.svg)
+
+ComfyUI custom nodes for HeartMuLa music generation with a workflow surface built around the controls you asked for: tags, BPM, song key, duration, lyrics, optional outro or tag ending, and lyric compliance checking after generation.
+
+![Example workflow preview](assets/workflow-preview.svg)
 
 ## What this package does
 
@@ -13,6 +17,15 @@ ComfyUI custom nodes for HeartMuLa music generation with a workflow surface buil
 - Saves lossless `.wav` output in the ComfyUI output folder.
 - Auto-downloads the required model assets into `ComfyUI/models/HeartMuLa` on first use.
 
+## Quick Start
+
+1. Install from the ComfyUI Extension Manager or clone into `custom_nodes`.
+2. Install Python requirements using the same Python that launches ComfyUI.
+3. Import `workflows/heartmula_simple_song_workflow.json`.
+4. Edit the lyrics, tags, BPM, song key, and duration inside `HeartMuLa Song Spec`.
+5. Run the workflow.
+6. Review the generated `.wav` and the lyric compliance report.
+
 ## Important note on model size
 
 HeartMuLa mentions an internal 7B model, but the open-source 7B checkpoint is not released yet. The largest public option today is the 3B line, and the recommended quality preset is `HeartMuLa-oss-3B-happy-new-year`.
@@ -21,11 +34,23 @@ HeartMuLa mentions an internal 7B model, but the open-source 7B checkpoint is no
 
 ### Extension Manager
 
+![Extension Manager install overview](assets/extension-manager-preview.svg)
+
 Once this repository is pushed to GitHub, install it from the ComfyUI Extension Manager by repository URL:
 
 `https://github.com/MPC2026/ComfyUI-MPC-HeartMuLa.git`
 
 The node pack already has the standard custom-node entrypoints and a `requirements.txt` for dependency installation.
+
+Extension Manager path:
+
+1. Open ComfyUI.
+2. Open `Manager`.
+3. Open `Custom Nodes` or `Install via Git URL`, depending on your manager version.
+4. Paste `https://github.com/MPC2026/ComfyUI-MPC-HeartMuLa.git`.
+5. Install the node.
+6. Restart ComfyUI.
+7. Install Python requirements if your manager did not do it automatically.
 
 ### Simple custom node install
 
@@ -49,15 +74,21 @@ pip install -r requirements.txt
 
 If your ComfyUI launcher uses a bundled Python, use that Python for the install command instead of system `pip`.
 
+### Import the included workflow
+
+1. Start ComfyUI after installing the node.
+2. Drag `workflows/heartmula_simple_song_workflow.json` onto the canvas.
+3. Or use the workflow load/import menu and select that file.
+4. Run the workflow once to let the models download.
+
 ### First run
 
-1. Add `HeartMuLa Song Spec`.
-2. Add `HeartMuLa Generate Music`.
-3. Connect `lyrics`, `tags`, and `max_audio_length_ms` from the spec node into the generate node.
-4. Leave `runtime_profile` on `auto` for Apple Silicon.
-5. Run the workflow once.
-6. Wait for the model download to finish on the first run.
-7. Find the generated `.wav` in your ComfyUI output folder.
+1. Import the included workflow or add the three spec-based nodes manually.
+2. Leave `runtime_profile` on `auto` for Apple Silicon.
+3. Run the workflow once.
+4. Wait for the model download to finish on the first run.
+5. Find the generated `.wav` in your ComfyUI output folder.
+6. Read the lyric compliance score and report on the final node.
 
 ## First-run downloads
 
@@ -89,6 +120,17 @@ Outputs:
 - effective tags
 - `max_audio_length_ms`
 - metadata JSON
+- `song_spec` for simple linked workflows
+
+### `HeartMuLa Generate From Spec`
+
+Uses the `song_spec` output from `HeartMuLa Song Spec` so you can keep the workflow to a single connected generation path.
+
+Returns:
+
+- `AUDIO`
+- saved file path
+- metadata JSON
 
 ### `HeartMuLa Generate Music`
 
@@ -109,11 +151,19 @@ Returns:
 - exact match boolean
 - report JSON
 
+### `HeartMuLa Lyrics Compliance From Spec`
+
+Consumes `song_spec` directly so the compliance check automatically compares against the same lyrics used to generate the song.
+
 ## Recommended simple workflow
 
-`HeartMuLa Song Spec` -> `HeartMuLa Generate Music` -> `HeartMuLa Lyrics Compliance`
+`HeartMuLa Song Spec` -> `HeartMuLa Generate From Spec` -> `HeartMuLa Lyrics Compliance From Spec`
 
-Use the first node for prompt construction, the second node for generation, and the third node to check how closely the vocals follow the written lyrics.
+Use the included workflow JSON if you want the fastest start. The older `Generate Music` and `Lyrics Compliance` nodes are still there for more manual setups.
+
+Included example workflow:
+
+- `workflows/heartmula_simple_song_workflow.json`
 
 ## Apple Silicon defaults
 
